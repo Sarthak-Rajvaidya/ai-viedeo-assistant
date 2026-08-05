@@ -1,0 +1,58 @@
+# ==========================
+# Core
+# ==========================
+streamlit
+python-dotenv
+
+# ==========================
+# LLM
+# ==========================
+mistralai
+
+# ==========================
+# LangChain
+# ==========================
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+
+# ==========================
+# Embeddings
+# ==========================
+sentence-transformers
+huggingface-hub
+
+# ==========================
+# Vector Database
+# ==========================
+chromadb
+
+# ==========================
+# Speech-to-Text
+# ==========================
+openai-whisper
+
+# ==========================
+# Audio Processing
+# ==========================
+ffmpeg-python
+pydub
+
+# ==========================
+# YouTube
+# ==========================
+yt-dlp
+
+# ==========================
+# PDF Export
+# ==========================
+reportlab
+
+# ==========================
+# Utilities
+# ==========================
+tqdm
+numpy
+pandas
+requests
