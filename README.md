@@ -1,8 +1,8 @@
 # 🧠 AI Meeting Intelligence Assistant
 
-An end-to-end AI-powered Meeting Assistant built using **Python**, **LLMs**, and **Retrieval-Augmented Generation (RAG)**.
+An end-to-end AI-powered Meeting Assistant built using **Python**, **Large Language Models (LLMs)**, and **Retrieval-Augmented Generation (RAG)**.
 
-The application can process meeting recordings from **YouTube URLs** or uploaded **audio/video files**, automatically generate meeting summaries, extract action items, identify key decisions, and allow users to chat with meeting transcripts using semantic search.
+The application processes meeting recordings from **YouTube URLs** or uploaded **audio/video files**, automatically transcribes conversations, generates intelligent meeting summaries, extracts action items, identifies key decisions, and allows users to chat with meeting transcripts using semantic search.
 
 > 🚧 **Project Status:** Actively Under Development
 
@@ -12,17 +12,31 @@ The application can process meeting recordings from **YouTube URLs** or uploaded
 
 ## ✅ Implemented
 
-- 🎥 Download audio from YouTube using **yt-dlp**
-- 🎵 Automatic audio extraction & conversion to **WAV** using **FFmpeg**
-- 📁 Automatic downloads directory creation
-- 🔐 Secure API key management using `.env`
-- ⚙️ Modular project setup for scalable development
+### 🎥 Audio Acquisition
+
+- Download meeting audio directly from **YouTube URLs**
+- Support for local **audio & video files**
+- Automatic downloads directory creation
+
+### 🎵 Audio Preprocessing
+
+- Convert any supported media format to **WAV**
+- Normalize audio to **Mono (1 Channel)**
+- Resample audio to **16 kHz** (Whisper-compatible)
+- Automatically split long recordings into configurable chunks
+- Prepare audio for efficient speech-to-text transcription
+
+### ⚙️ Project Setup
+
+- Secure API key management using `.env`
+- FFmpeg integration
+- Modular Python project structure
+- Python virtual environment setup
 
 ---
 
-## 🚀 Upcoming Features
+# 🚀 Upcoming Features
 
-- 🎙️ Audio & Video File Upload
 - 📝 Speech-to-Text using OpenAI Whisper
 - 🌍 Hindi & Hinglish Transcription using Sarvam AI
 - 📄 AI Meeting Summarization
@@ -33,7 +47,7 @@ The application can process meeting recordings from **YouTube URLs** or uploaded
 - 🧠 Semantic Search using ChromaDB
 - 🔍 HuggingFace Embeddings
 - 📑 Export Meeting Report as PDF & TXT
-- 🌐 Streamlit Web Interface
+- 🌐 Interactive Streamlit Dashboard
 
 ---
 
@@ -59,13 +73,12 @@ The application can process meeting recordings from **YouTube URLs** or uploaded
 AI-Meeting-Assistant-RAG/
 │
 ├── downloads/
+├── uploads/
+├── reports/
+├── chroma_db/
 │
 ├── utils/
 │   └── audio_processor.py
-│
-├── chroma_db/
-├── reports/
-├── uploads/
 │
 ├── .env
 ├── .gitignore
@@ -74,7 +87,7 @@ AI-Meeting-Assistant-RAG/
 └── app.py
 ```
 
-> **Note:** The project structure will be refactored into a `src/` based architecture as development progresses.
+> 📌 The project will be migrated to a modular `src/` architecture as additional AI components are implemented.
 
 ---
 
@@ -88,7 +101,7 @@ git clone https://github.com/your-username/AI-Meeting-Assistant-RAG.git
 
 ---
 
-## 2. Navigate to Project
+## 2. Navigate into Project
 
 ```bash
 cd AI-Meeting-Assistant-RAG
@@ -104,7 +117,7 @@ py -3.11 -m venv venv
 
 ---
 
-## 4. Activate Virtual Environment
+## 4. Activate Environment
 
 ### Windows
 
@@ -130,7 +143,7 @@ pip install -r requirements.txt
 
 ## 6. Install FFmpeg
 
-Download FFmpeg and ensure both `ffmpeg` and `ffprobe` are available in your system PATH.
+Install FFmpeg and ensure both `ffmpeg` and `ffprobe` are available in your system PATH.
 
 Verify installation:
 
@@ -159,13 +172,16 @@ MISTRAL_API_KEY=your_api_key_here
 ## ✅ Completed
 
 - Project Initialization
-- Python Virtual Environment Setup
-- Git & GitHub Setup
+- Git Repository Setup
+- Python Virtual Environment
 - README & .gitignore
-- Mistral AI Integration
+- Mistral AI Configuration
 - FFmpeg Installation & Configuration
 - YouTube Audio Downloader
-- Automatic WAV Audio Conversion
+- Local Audio & Video File Support
+- Audio Format Conversion to WAV
+- Audio Normalization (Mono + 16 kHz)
+- Audio Chunking for Long Meetings
 - Modular Audio Processing Pipeline
 
 ---
@@ -180,24 +196,62 @@ MISTRAL_API_KEY=your_api_key_here
 
 - [x] Project Setup
 - [x] Environment Configuration
-- [x] YouTube Audio Download
-- [x] Audio Conversion using FFmpeg
-- [ ] Whisper Transcription
-- [ ] Meeting Summarization
+- [x] YouTube Audio Downloader
+- [x] Local Audio & Video Upload Support
+- [x] Audio Conversion to WAV
+- [x] Audio Normalization
+- [x] Audio Chunking
+- [ ] Whisper Speech-to-Text
+- [ ] AI Meeting Summarization
 - [ ] Action Item Extraction
 - [ ] Decision Extraction
+- [ ] Open Question Detection
 - [ ] Embedding Generation
 - [ ] ChromaDB Integration
-- [ ] RAG Chat
+- [ ] Conversational RAG
 - [ ] Streamlit Dashboard
-- [ ] PDF Report Generation
+- [ ] PDF & TXT Report Export
 - [ ] Docker Deployment
+
+---
+
+# 🔄 Processing Pipeline
+
+```text
+                User Input
+                     │
+         ┌───────────┴────────────┐
+         │                        │
+   YouTube URL             Audio / Video File
+         │                        │
+      yt-dlp                PyDub + FFmpeg
+         │                        │
+         └──────────┬─────────────┘
+                    │
+          WAV Audio (Mono • 16 kHz)
+                    │
+             Audio Chunking
+                    │
+             Whisper (Next)
+                    │
+              Meeting Transcript
+                    │
+                 Mistral AI
+                    │
+        Summary • Decisions • Actions
+                    │
+      HuggingFace Embeddings
+                    │
+               ChromaDB
+                    │
+             Chat with Meeting
+```
 
 ---
 
 # 📸 Demo
 
-🚧 Screenshots and demo video will be added after the first working prototype.
+🚧 Screenshots and demonstration video will be added after the first working prototype.
 
 ---
 
@@ -205,14 +259,14 @@ MISTRAL_API_KEY=your_api_key_here
 
 Contributions, issues, and feature requests are welcome.
 
-If you'd like to contribute, feel free to fork the repository and submit a pull request.
+Feel free to fork this repository and submit a Pull Request.
 
 ---
 
 # 📄 License
 
-This project is licensed under the MIT License.
+Licensed under the MIT License.
 
 ---
 
-## ⭐ If you like this project, consider giving it a star!
+⭐ **If you found this project helpful, consider giving it a Star!**
