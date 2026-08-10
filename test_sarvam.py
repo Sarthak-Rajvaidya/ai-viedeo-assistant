@@ -1,17 +1,19 @@
 from utils.audio_processor import process_input
 from core.sarvam_transcriber import transcribe_sarvam_batch
 
+
 source = "https://youtu.be/OnVFOjvjK5I"
 
-# Process YouTube URL
-chunks = process_input(source)
+# Process input
+audio_data = process_input(source)
 
-# For testing, use the first generated WAV chunk
-audio_path = chunks[0]
+# Get the FULL WAV file
+wav_path = audio_data["wav_path"]
 
 print("\nStarting Sarvam Batch transcription...\n")
 
-transcript = transcribe_sarvam_batch(audio_path)
+transcript = transcribe_sarvam_batch(wav_path)
 
-print("\n========== TRANSCRIPT ==========\n")
+print("\n========== FULL TRANSCRIPT ==========\n")
+
 print(transcript)
