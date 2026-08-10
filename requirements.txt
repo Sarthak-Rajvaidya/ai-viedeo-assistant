@@ -56,3 +56,9 @@ tqdm
 numpy
 pandas
 requests
+
+# ==========================
+# Indian Language Speech-to-Text
+# ==========================
+
+sarvamai
