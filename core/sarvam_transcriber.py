@@ -16,12 +16,12 @@ client = SarvamAI(
 
 def transcribe_sarvam_batch(audio_path: str) -> str:
 
-    print("Creating Sarvam Batch Job...")
+    print("Creating Sarvam Batch Translation Job...")
 
     job = client.speech_to_text_job.create_job(
         model="saaras:v3",
-        mode="transcribe",
-        language_code="hi-IN",
+        mode="translate",          # Hindi audio → English text
+        language_code="hi-IN",     # Input language is Hindi
         with_diarization=True
     )
 
@@ -37,7 +37,7 @@ def transcribe_sarvam_batch(audio_path: str) -> str:
 
     job.start()
 
-    print("Waiting for transcription...")
+    print("Waiting for translation...")
 
     job.wait_until_complete()
 
@@ -45,15 +45,17 @@ def transcribe_sarvam_batch(audio_path: str) -> str:
 
     if file_results["failed"]:
         raise RuntimeError(
-            f"Sarvam transcription failed: "
+            f"Sarvam translation failed: "
             f"{file_results['failed']}"
         )
 
-    print("Transcription completed.")
+    print("Translation completed.")
 
+    # Create output directory
     output_dir = Path("./sarvam_output")
     output_dir.mkdir(exist_ok=True)
 
+    # Download JSON results
     job.download_outputs(
         output_dir=str(output_dir)
     )
@@ -66,7 +68,7 @@ def transcribe_sarvam_batch(audio_path: str) -> str:
             "Sarvam completed the job but no JSON output was found."
         )
 
-    # Read first JSON file
+    # Read JSON
     with open(json_files[0], "r", encoding="utf-8") as f:
         result = json.load(f)
 
@@ -74,7 +76,7 @@ def transcribe_sarvam_batch(audio_path: str) -> str:
 
     if not transcript:
         raise RuntimeError(
-            "Transcript not found in Sarvam output."
+            "Translated transcript not found in Sarvam output."
         )
 
     return transcript
