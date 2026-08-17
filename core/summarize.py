@@ -50,9 +50,46 @@ def summarize(transcript : str) -> str:
         [
             (
                 "system",
-                "You are and expert meeting summarizer. Combine these partial summaries"
+                "You are an expert meeting summarizer. Combine these partial summaries"
                 "into one professional meeting summary in bullet points",
             ),
             ("human","{text}"),
         ]
     )
+    
+    combined_chain = (
+        RunnablePassthrough()| RunnableLambda(lambda x: {"text":x}) | combined_prompt |llm | StrOutputParser
+        
+        
+    )
+    
+    return combined_chain.invoke(combined)
+
+
+def generate_title(transcript : str)->str:
+    llm = get_llm()
+    
+    
+    
+    title_chain = (
+        
+        RunnablePassthrough()| RunnableLambda(lambda x: {"text":x}) | ChatPromptTemplate.from_messages([
+            
+            (
+                "system",
+                "Based on the meeting transcript,generate short professional meeting title"
+                "(max 8 words).Only return the title nothing else",
+            ),
+            
+            ("human","{text}"),
+            
+            
+        ])
+        
+        | llm
+        |StrOutputParser()
+        
+    )
+    
+    return title_chain.invoke(transcript[:2000])
+
