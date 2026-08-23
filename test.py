@@ -1,15 +1,14 @@
+import os
+import json
+
+from dotenv import load_dotenv
+
 from utils.audio_processor import process_input
-
-from core.transcriber import transcribe_all
 from core.sarvam_transcriber import transcribe_sarvam_batch
+from core.analyzer import analyze_transcript
 
-from core.summarize import summarize, generate_title
 
-from core.extractor import (
-    extract_action_items,
-    extract_key_decisions,
-    extract_questions
-)
+load_dotenv()
 
 
 # ============================================================
@@ -17,14 +16,6 @@ from core.extractor import (
 # ============================================================
 
 SOURCE = "https://youtu.be/sHpgX2FnToM?si=DUBOWBOC4gbdKBv_"
-
-# Choose transcription engine:
-#
-# "whisper" -> OpenAI Whisper (local)
-# "sarvam"  -> Sarvam AI Saaras v3
-#
-# For your Hindi video, use "sarvam".
-TRANSCRIPTION_ENGINE = "sarvam"
 
 
 # ============================================================
@@ -35,149 +26,241 @@ print("\n" + "=" * 70)
 print("STEP 1: AUDIO PROCESSING")
 print("=" * 70)
 
-audio_data = process_input(SOURCE)
+audio_data = process_input(
+    SOURCE
+)
 
 wav_path = audio_data["wav_path"]
-chunks = audio_data["chunks"]
 
 print(f"\nWAV file: {wav_path}")
-print(f"Number of chunks: {len(chunks)}")
+
+print(
+    f"Number of chunks: "
+    f"{len(audio_data.get('chunks', []))}"
+)
 
 
 # ============================================================
-# STEP 2: SPEECH-TO-TEXT
+# STEP 2: SPEECH-TO-TEXT / TRANSLATION
 # ============================================================
 
 print("\n" + "=" * 70)
 print("STEP 2: SPEECH-TO-TEXT")
 print("=" * 70)
 
+print("\nUsing Sarvam AI Saaras v3...")
 
-if TRANSCRIPTION_ENGINE == "whisper":
+raw_transcript = transcribe_sarvam_batch(
+    wav_path
+)
 
-    print("\nUsing OpenAI Whisper...\n")
+print("\n========== RAW TRANSCRIPT ==========\n")
 
-    transcript = transcribe_all(chunks)
+print(raw_transcript)
 
 
-elif TRANSCRIPTION_ENGINE == "sarvam":
+# ============================================================
+# STEP 3: AI ANALYSIS
+# ============================================================
 
-    print("\nUsing Sarvam AI Saaras v3...\n")
+print("\n" + "=" * 70)
+print("STEP 3: AI MEETING INTELLIGENCE")
+print("=" * 70)
 
-    # Sarvam Batch API can process the complete WAV file.
-    transcript = transcribe_sarvam_batch(wav_path)
+result = analyze_transcript(
+    raw_transcript
+)
 
+
+# ============================================================
+# DISPLAY RESULTS
+# ============================================================
+
+print("\n" + "=" * 70)
+print("FINAL RESULTS")
+print("=" * 70)
+
+
+print("\nTITLE")
+print("-" * 70)
+
+print(
+    result["title"]
+)
+
+
+print("\nCONTENT TYPE")
+print("-" * 70)
+
+print(
+    result["content_type"]
+)
+
+print(
+    f"Confidence: "
+    f"{result['classification_confidence']}"
+)
+
+
+print("\nSUMMARY")
+print("-" * 70)
+
+print(
+    result["summary"]
+)
+
+
+print("\nACTION ITEMS")
+print("-" * 70)
+
+if result["action_items"]:
+
+    for index, item in enumerate(
+        result["action_items"],
+        start=1
+    ):
+
+        print(
+            f"\n{index}. "
+            f"{item.get('task', 'Not specified')}"
+        )
+
+        print(
+            f"   Owner: "
+            f"{item.get('owner', 'Not specified')}"
+        )
+
+        print(
+            f"   Deadline: "
+            f"{item.get('deadline', 'Not specified')}"
+        )
+
+        print(
+            f"   Priority: "
+            f"{item.get('priority', 'Not specified')}"
+        )
 
 else:
 
-    raise ValueError(
-        "Invalid transcription engine. "
-        "Use either 'whisper' or 'sarvam'."
+    print("No action items found.")
+
+
+print("\nKEY DECISIONS")
+print("-" * 70)
+
+if result["decisions"]:
+
+    for index, item in enumerate(
+        result["decisions"],
+        start=1
+    ):
+
+        print(
+            f"\n{index}. "
+            f"{item.get('decision', 'Not specified')}"
+        )
+
+        print(
+            f"   Made by: "
+            f"{item.get('made_by', 'Not specified')}"
+        )
+
+        print(
+            f"   Reason: "
+            f"{item.get('reason', 'Not specified')}"
+        )
+
+else:
+
+    print("No key decisions found.")
+
+
+print("\nOPEN QUESTIONS")
+print("-" * 70)
+
+if result["open_questions"]:
+
+    for index, item in enumerate(
+        result["open_questions"],
+        start=1
+    ):
+
+        print(
+            f"\n{index}. "
+            f"{item.get('question', 'Not specified')}"
+        )
+
+        print(
+            f"   Context: "
+            f"{item.get('context', 'Not specified')}"
+        )
+
+else:
+
+    print("No open questions found.")
+
+
+print("\nKEY TOPICS")
+print("-" * 70)
+
+if result["key_topics"]:
+
+    for index, item in enumerate(
+        result["key_topics"],
+        start=1
+    ):
+
+        print(
+            f"\n{index}. "
+            f"{item.get('topic', 'Not specified')}"
+        )
+
+        print(
+            f"   Description: "
+            f"{item.get('description', '')}"
+        )
+
+else:
+
+    print("No key topics found.")
+
+
+# ============================================================
+# SAVE STRUCTURED RESULT
+# ============================================================
+
+os.makedirs(
+    "reports",
+    exist_ok=True
+)
+
+output_file = (
+    "reports/meeting_analysis.json"
+)
+
+with open(
+    output_file,
+    "w",
+    encoding="utf-8"
+) as f:
+
+    json.dump(
+        result,
+        f,
+        ensure_ascii=False,
+        indent=4
     )
 
 
-print("\n========== FULL TRANSCRIPT ==========\n")
-print(transcript)
-
-
-# ============================================================
-# STEP 3: GENERATE MEETING TITLE
-# ============================================================
-
 print("\n" + "=" * 70)
-print("STEP 3: GENERATING MEETING TITLE")
+print("ANALYSIS SAVED")
 print("=" * 70)
 
-title = generate_title(transcript)
+print(
+    f"Saved to: {output_file}"
+)
 
-print("\n========== MEETING TITLE ==========\n")
-print(title)
-
-
-# ============================================================
-# STEP 4: GENERATE MEETING SUMMARY
-# ============================================================
 
 print("\n" + "=" * 70)
-print("STEP 4: GENERATING MEETING SUMMARY")
-print("=" * 70)
-
-summary = summarize(transcript)
-
-print("\n========== MEETING SUMMARY ==========\n")
-print(summary)
-
-
-# ============================================================
-# STEP 5: EXTRACT ACTION ITEMS
-# ============================================================
-
-print("\n" + "=" * 70)
-print("STEP 5: EXTRACTING ACTION ITEMS")
-print("=" * 70)
-
-action_items = extract_action_items(transcript)
-
-print("\n========== ACTION ITEMS ==========\n")
-print(action_items)
-
-
-# ============================================================
-# STEP 6: EXTRACT KEY DECISIONS
-# ============================================================
-
-print("\n" + "=" * 70)
-print("STEP 6: EXTRACTING KEY DECISIONS")
-print("=" * 70)
-
-decisions = extract_key_decisions(transcript)
-
-print("\n========== KEY DECISIONS ==========\n")
-print(decisions)
-
-
-# ============================================================
-# STEP 7: EXTRACT OPEN QUESTIONS
-# ============================================================
-
-print("\n" + "=" * 70)
-print("STEP 7: EXTRACTING OPEN QUESTIONS")
-print("=" * 70)
-
-questions = extract_questions(transcript)
-
-print("\n========== OPEN QUESTIONS ==========\n")
-print(questions)
-
-
-# ============================================================
-# FINAL OUTPUT
-# ============================================================
-
-print("\n" + "=" * 70)
-print("MEETING INTELLIGENCE PIPELINE COMPLETED")
-print("=" * 70)
-
-print("\n\nTITLE")
-print("-" * 70)
-print(title)
-
-print("\n\nSUMMARY")
-print("-" * 70)
-print(summary)
-
-print("\n\nACTION ITEMS")
-print("-" * 70)
-print(action_items)
-
-print("\n\nKEY DECISIONS")
-print("-" * 70)
-print(decisions)
-
-print("\n\nOPEN QUESTIONS")
-print("-" * 70)
-print(questions)
-
-print("\n" + "=" * 70)
-print("END")
+print("PIPELINE COMPLETED")
 print("=" * 70)

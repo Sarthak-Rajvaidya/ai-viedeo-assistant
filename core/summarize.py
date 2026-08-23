@@ -1,32 +1,26 @@
+import os
+
 from langchain_mistralai import ChatMistralAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-import os
-
-
-# ============================================================
-# LLM CONFIGURATION
-# ============================================================
 
 def get_llm():
+
+    api_key = os.getenv("MISTRAL_API_KEY")
+
+    if not api_key:
+        raise ValueError("MISTRAL_API_KEY is not set in .env")
+
     return ChatMistralAI(
         model="mistral-small-latest",
-        mistral_api_key=os.getenv("MISTRAL_API_KEY"),
+        mistral_api_key=api_key,
         temperature=0.3
     )
 
 
-# ============================================================
-# TRANSCRIPT CHUNKING
-# ============================================================
-
 def split_transcript(transcript: str) -> list:
-    """
-    Split a long transcript into smaller overlapping chunks
-    so that the LLM can process it safely.
-    """
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=3000,
@@ -36,31 +30,37 @@ def split_transcript(transcript: str) -> list:
     return splitter.split_text(transcript)
 
 
-# ============================================================
-# MEETING SUMMARIZATION
-# ============================================================
-
 def summarize(transcript: str) -> str:
 
-    llm = get_llm()
+    if not transcript or not transcript.strip():
+        raise ValueError("Transcript is empty.")
 
-    # --------------------------------------------------------
-    # STEP 1: Summarize individual transcript chunks
-    # --------------------------------------------------------
+    llm = get_llm()
 
     map_prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                "You are an expert meeting summarizer. "
-                "Summarize this portion of a meeting transcript "
-                "concisely while preserving important information, "
-                "decisions, tasks, and discussion points."
+                """
+You are an expert meeting summarizer.
+
+Summarize this portion of a transcript concisely.
+
+Focus on:
+- Important topics
+- Main ideas
+- Important facts
+- Decisions
+- Tasks
+- Conclusions
+
+Do not invent information.
+"""
             ),
             (
                 "human",
                 "{text}"
-            ),
+            )
         ]
     )
 
@@ -71,15 +71,14 @@ def summarize(transcript: str) -> str:
     chunk_summaries = []
 
     for chunk in chunks:
-        summary = map_chain.invoke({
-            "text": chunk
-        })
+
+        summary = map_chain.invoke(
+            {
+                "text": chunk
+            }
+        )
 
         chunk_summaries.append(summary)
-
-    # --------------------------------------------------------
-    # STEP 2: Combine all partial summaries
-    # --------------------------------------------------------
 
     combined = "\n\n".join(chunk_summaries)
 
@@ -87,39 +86,54 @@ def summarize(transcript: str) -> str:
         [
             (
                 "system",
-                "You are an expert meeting summarizer. "
-                "Combine the following partial meeting summaries "
-                "into one professional and coherent meeting summary. "
-                "Use clear bullet points. "
-                "Preserve important topics, decisions, tasks, "
-                "and conclusions. "
-                "Do not add information that is not present "
-                "in the provided summaries."
+                """
+You are an expert meeting summarizer.
+
+Combine the partial summaries into one professional summary.
+
+Use the following structure:
+
+### Overview
+Short overview.
+
+### Key Discussion Points
+- Important point
+- Important point
+
+### Main Takeaways
+- Takeaway
+- Takeaway
+
+### Conclusions
+- Conclusion
+
+Rules:
+- Do not invent information.
+- Remove duplicate information.
+- Keep the summary concise.
+- Preserve important names, dates and numbers.
+"""
             ),
             (
                 "human",
                 "{text}"
-            ),
+            )
         ]
     )
 
-    # Simple and correct LangChain pipeline
-    combined_chain = (
-        combined_prompt
-        | llm
-        | StrOutputParser()
-    )
+    combined_chain = combined_prompt | llm | StrOutputParser()
 
-    return combined_chain.invoke({
-        "text": combined
-    })
+    return combined_chain.invoke(
+        {
+            "text": combined
+        }
+    ).strip()
 
-
-# ============================================================
-# MEETING TITLE GENERATION
-# ============================================================
 
 def generate_title(transcript: str) -> str:
+
+    if not transcript or not transcript.strip():
+        raise ValueError("Transcript is empty.")
 
     llm = get_llm()
 
@@ -127,24 +141,28 @@ def generate_title(transcript: str) -> str:
         [
             (
                 "system",
-                "Based on the meeting transcript, generate a "
-                "short professional meeting title. "
-                "Maximum 8 words. "
-                "Return only the title and nothing else."
+                """
+Based on the transcript, generate a short professional title.
+
+Rules:
+
+- Maximum 8 words.
+- Clearly represent the main topic.
+- Do not use quotation marks.
+- Return ONLY the title.
+"""
             ),
             (
                 "human",
                 "{text}"
-            ),
+            )
         ]
     )
 
-    title_chain = (
-        title_prompt
-        | llm
-        | StrOutputParser()
-    )
+    title_chain = title_prompt | llm | StrOutputParser()
 
-    return title_chain.invoke({
-        "text": transcript[:2000]
-    })
+    return title_chain.invoke(
+        {
+            "text": transcript[:4000]
+        }
+    ).strip()

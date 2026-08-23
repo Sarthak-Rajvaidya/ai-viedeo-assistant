@@ -1,98 +1,285 @@
-#Actionable items - eg google meet - u have to do that u hvae to do it 
-
-#decisions, questions 
+import os
+import json
 
 from langchain_mistralai import ChatMistralAI
-
 from langchain_core.prompts import ChatPromptTemplate
-
 from langchain_core.output_parsers import StrOutputParser
 
-from langchain_core.runnables import RunnablePassthrough,RunnableLambda
-
-import os
 
 def get_llm():
-    return ChatMistralAI(model = "mistral-small-latest",mistral_api_key = os.getenv("MISTRAL_API_KEY"),temperature = 0.2) #temp for creative response
 
-def build_chain(system_prompt : str):
+    api_key = os.getenv("MISTRAL_API_KEY")
+
+    if not api_key:
+        raise ValueError("MISTRAL_API_KEY is not set in .env")
+
+    return ChatMistralAI(
+        model="mistral-small-latest",
+        mistral_api_key=api_key,
+        temperature=0.1
+    )
+
+
+def safe_json_parse(response: str, default: dict) -> dict:
+
+    try:
+        return json.loads(response)
+
+    except json.JSONDecodeError:
+
+        start = response.find("{")
+        end = response.rfind("}")
+
+        if start != -1 and end != -1:
+
+            try:
+                return json.loads(
+                    response[start:end + 1]
+                )
+
+            except json.JSONDecodeError:
+                pass
+
+        return default
+
+
+def extract_meeting_information(transcript: str) -> dict:
+
+    if not transcript or not transcript.strip():
+        raise ValueError("Transcript is empty.")
+
     llm = get_llm()
-    return (
-        RunnablePassthrough() | RunnableLambda(lambda x : {"text" : x}) | ChatPromptTemplate.from_messages([
-        ("system",system_prompt),
-        ("human","{text}"),
-    ]) | llm | StrOutputParser()
-        )
 
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
+You are an expert meeting intelligence system.
+
+Analyze the transcript and extract structured information.
+
+Return ONLY valid JSON.
+
+Use EXACTLY this structure:
+
+{
+    "action_items": [
+        {
+            "task": "",
+            "owner": "",
+            "deadline": "",
+            "priority": "",
+            "evidence": ""
+        }
+    ],
+
+    "decisions": [
+        {
+            "decision": "",
+            "made_by": "",
+            "reason": "",
+            "evidence": ""
+        }
+    ],
+
+    "open_questions": [
+        {
+            "question": "",
+            "context": "",
+            "evidence": ""
+        }
+    ],
+
+    "key_topics": [
+        {
+            "topic": "",
+            "description": ""
+        }
+    ]
+}
+
+ACTION ITEMS:
+
+Extract tasks that require an action.
+
+Include:
+- Explicit tasks
+- Clearly implied tasks
+
+Do NOT include:
+- Completed historical tasks
+- General statements
+- Pure suggestions without actionable intent
+
+If owner is unknown:
+"Not specified"
+
+If deadline is unknown:
+"Not specified"
+
+If priority is unknown:
+"Not specified"
+
+
+DECISIONS:
+
+Extract decisions that were actually made.
+
+Do not treat suggestions or discussions as decisions.
+
+If none:
+[]
+
+
+OPEN QUESTIONS:
+
+Extract questions or issues that remain unresolved.
+
+Do not include questions that were already answered.
+
+If none:
+[]
+
+
+KEY TOPICS:
+
+Extract the major topics discussed.
+
+Avoid duplicate topics.
+
+IMPORTANT:
+
+- Do not invent information.
+- Preserve names and dates.
+- Evidence must be based on the transcript.
+- Return valid JSON only.
+"""
+            ),
+            (
+                "human",
+                "{transcript}"
+            )
+        ]
+    )
+
+    chain = prompt | llm | StrOutputParser()
+
+    response = chain.invoke(
+        {
+            "transcript": transcript
+        }
+    )
+
+    return safe_json_parse(
+        response,
+        {
+            "action_items": [],
+            "decisions": [],
+            "open_questions": [],
+            "key_topics": []
+        }
+    )
+
+
+# ---------------------------------------------------------
+# Backward-compatible helper functions
+# ---------------------------------------------------------
 
 def extract_action_items(transcript: str) -> str:
 
-    chain = build_chain(
+    result = extract_meeting_information(transcript)
 
-        "You are an expert meeting analyst. "
-        "From the meeting transcript, extract all action items.\n\n"
-
-        "For each action item provide:\n"
-        "- Task description\n"
-        "- Owner (who is responsible)\n"
-        "- Deadline (if mentioned, otherwise write 'Not specified')\n\n"
-
-        "Important rules:\n"
-        "- Only extract action items explicitly mentioned in the transcript.\n"
-        "- Do not invent tasks, owners, or deadlines.\n"
-        "- If the owner is not mentioned, write 'Not specified'.\n"
-        "- If no action items exist, say 'No action items found.'\n\n"
-
-        "Format the result as a numbered list."
+    action_items = result.get(
+        "action_items",
+        []
     )
 
-    return chain.invoke(transcript)
+    if not action_items:
+        return "No action items found."
 
+    output = []
 
+    for index, item in enumerate(action_items, start=1):
+
+        output.append(
+            f"{index}. {item.get('task', 'Not specified')}\n"
+            f"   Owner: {item.get('owner', 'Not specified')}\n"
+            f"   Deadline: {item.get('deadline', 'Not specified')}\n"
+            f"   Priority: {item.get('priority', 'Not specified')}"
+        )
+
+    return "\n".join(output)
 
 
 def extract_key_decisions(transcript: str) -> str:
-    chain = build_chain(
-        "You are an expert meeting analyst. "
-        "From the meeting transcript, extract all important decisions "
-        "that were explicitly made during the meeting.\n\n"
 
-        "For each decision:\n"
-        "- Clearly describe what was decided.\n"
-        "- Include the reason or context if it is explicitly mentioned.\n"
-        "- Include the decision owner or responsible person if explicitly mentioned.\n\n"
+    result = extract_meeting_information(transcript)
 
-        "Important rules:\n"
-        "- Only extract decisions explicitly supported by the transcript.\n"
-        "- Do not infer or invent decisions.\n"
-        "- Do not treat suggestions, opinions, or possibilities as decisions.\n"
-        "- If no clear decisions were made, say 'No key decisions found.'\n\n"
-
-        "Format the result as a numbered list."
+    decisions = result.get(
+        "decisions",
+        []
     )
 
-    return chain.invoke(transcript)
+    if not decisions:
+        return "No key decisions found."
+
+    output = []
+
+    for index, item in enumerate(decisions, start=1):
+
+        output.append(
+            f"{index}. {item.get('decision', 'Not specified')}\n"
+            f"   Made by: {item.get('made_by', 'Not specified')}\n"
+            f"   Reason: {item.get('reason', 'Not specified')}"
+        )
+
+    return "\n".join(output)
 
 
 def extract_questions(transcript: str) -> str:
-    chain = build_chain(
-        "You are an expert meeting analyst. "
-        "From the meeting transcript, extract all unresolved questions, "
-        "pending issues, or topics that require follow-up.\n\n"
 
-        "For each question or issue:\n"
-        "- Clearly describe the question or unresolved issue.\n"
-        "- Include the person responsible for answering it if explicitly mentioned.\n"
-        "- Include a deadline if explicitly mentioned.\n\n"
+    result = extract_meeting_information(transcript)
 
-        "Important rules:\n"
-        "- Only extract questions or unresolved issues supported by the transcript.\n"
-        "- Do not invent questions.\n"
-        "- Do not include questions that were already answered during the meeting.\n"
-        "- Do not treat general discussion as an unresolved question.\n"
-        "- If no open questions exist, say 'No open questions found.'\n\n"
-
-        "Format the result as a numbered list."
+    questions = result.get(
+        "open_questions",
+        []
     )
 
-    return chain.invoke(transcript)
+    if not questions:
+        return "No open questions found."
+
+    output = []
+
+    for index, item in enumerate(questions, start=1):
+
+        output.append(
+            f"{index}. {item.get('question', 'Not specified')}\n"
+            f"   Context: {item.get('context', 'Not specified')}"
+        )
+
+    return "\n".join(output)
+
+
+def extract_key_topics(transcript: str) -> str:
+
+    result = extract_meeting_information(transcript)
+
+    topics = result.get(
+        "key_topics",
+        []
+    )
+
+    if not topics:
+        return "No key topics found."
+
+    output = []
+
+    for index, item in enumerate(topics, start=1):
+
+        output.append(
+            f"{index}. {item.get('topic', 'Not specified')}: "
+            f"{item.get('description', '')}"
+        )
+
+    return "\n".join(output)
