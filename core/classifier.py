@@ -1,17 +1,28 @@
+# core/classifier.py
+
 import os
 import json
 
+from dotenv import load_dotenv
 from langchain_mistralai import ChatMistralAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 
-def get_llm():
+load_dotenv()
 
+
+# ============================================================
+# LLM CONFIGURATION
+# ============================================================
+
+def get_llm():
     api_key = os.getenv("MISTRAL_API_KEY")
 
     if not api_key:
-        raise ValueError("MISTRAL_API_KEY is not set in .env")
+        raise ValueError(
+            "MISTRAL_API_KEY not found in environment variables."
+        )
 
     return ChatMistralAI(
         model="mistral-small-latest",
@@ -20,10 +31,35 @@ def get_llm():
     )
 
 
+# ============================================================
+# CONTENT CLASSIFICATION
+# ============================================================
+
 def classify_content(transcript: str) -> dict:
+    """
+    Classifies a transcript into a high-level content type.
+
+    Possible content types:
+        - meeting
+        - educational
+        - interview
+        - podcast
+        - tutorial
+        - presentation
+        - discussion
+        - lecture
+        - other
+
+    Returns:
+        {
+            "content_type": "...",
+            "confidence": 0.0,
+            "reason": "..."
+        }
+    """
 
     if not transcript or not transcript.strip():
-        raise ValueError("Transcript is empty.")
+        raise ValueError("Transcript cannot be empty.")
 
     llm = get_llm()
 
@@ -32,42 +68,50 @@ def classify_content(transcript: str) -> dict:
             (
                 "system",
                 """
-You are a content classification system.
+You are an expert content classification system.
 
-Classify the provided transcript into exactly ONE category:
+Your task is to analyze the provided transcript and classify
+what type of content it represents.
+
+Choose exactly ONE content type from:
 
 - meeting
-- project_meeting
-- standup
+- educational
 - interview
-- lecture
+- podcast
 - tutorial
-- webinar
-- brainstorming
 - presentation
-- conversation
+- discussion
+- lecture
 - other
 
 Return ONLY valid JSON.
 
-Required format:
+The JSON must follow this exact structure:
 
-{
-    "content_type": "project_meeting",
+{{
+    "content_type": "meeting",
     "confidence": 0.95,
     "reason": "Short explanation"
-}
+}}
 
 Rules:
 
-- confidence must be between 0 and 1.
-- Do not invent information.
-- Choose the category that best represents the transcript.
+1. content_type must be exactly one of the allowed categories.
+2. confidence must be a number between 0 and 1.
+3. reason must be short and explain the classification.
+4. Do not add markdown.
+5. Do not add ```json.
+6. Do not add any text outside the JSON.
 """
             ),
             (
                 "human",
-                "{transcript}"
+                """
+Analyze this transcript:
+
+{transcript}
+"""
             )
         ]
     )
@@ -76,27 +120,96 @@ Rules:
 
     response = chain.invoke(
         {
-            "transcript": transcript[:12000]
+            "transcript": transcript
         }
     )
 
+    # --------------------------------------------------------
+    # Clean response
+    # --------------------------------------------------------
+
+    response = response.strip()
+
+    # Remove accidental markdown fences
+    if response.startswith("```json"):
+        response = response[7:]
+
+    if response.startswith("```"):
+        response = response[3:]
+
+    if response.endswith("```"):
+        response = response[:-3]
+
+    response = response.strip()
+
+    # --------------------------------------------------------
+    # Parse JSON
+    # --------------------------------------------------------
+
     try:
-        return json.loads(response)
+        result = json.loads(response)
 
     except json.JSONDecodeError:
+        print("Warning: Mistral returned invalid JSON.")
+        print("Raw response:")
+        print(response)
 
-        # Try to recover JSON if model added extra text.
-        start = response.find("{")
-        end = response.rfind("}")
-
-        if start != -1 and end != -1:
-            try:
-                return json.loads(response[start:end + 1])
-            except json.JSONDecodeError:
-                pass
-
+        # Safe fallback
         return {
             "content_type": "other",
             "confidence": 0.0,
             "reason": "Unable to parse classifier response."
         }
+
+    # --------------------------------------------------------
+    # Validate result
+    # --------------------------------------------------------
+
+    allowed_types = {
+        "meeting",
+        "educational",
+        "interview",
+        "podcast",
+        "tutorial",
+        "presentation",
+        "discussion",
+        "lecture",
+        "other"
+    }
+
+    content_type = result.get("content_type", "other")
+
+    if content_type not in allowed_types:
+        content_type = "other"
+
+    try:
+        confidence = float(result.get("confidence", 0.0))
+    except (ValueError, TypeError):
+        confidence = 0.0
+
+    confidence = max(0.0, min(1.0, confidence))
+
+    reason = result.get(
+        "reason",
+        "No classification reason provided."
+    )
+
+    return {
+        "content_type": content_type,
+        "confidence": confidence,
+        "reason": reason
+    }
+
+
+# ============================================================
+# HELPER FUNCTION
+# ============================================================
+
+def get_content_type(transcript: str) -> str:
+    """
+    Convenience function that returns only the content type.
+    """
+
+    result = classify_content(transcript)
+
+    return result["content_type"]
