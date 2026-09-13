@@ -115,9 +115,9 @@ whisper_transcribe = _safe_import(
 # -----------------------------------------------------------------------------
 
 sarvam_transcribe = _safe_import(
-    "core.sarvam_transcriber.transcribe",
+    "sarvam_transcriber.transcribe",
     lambda: __import__(
-        "core.sarvam_transcriber",
+        "sarvam_transcriber",
         fromlist=["transcribe"]
     ).transcribe,
 )
