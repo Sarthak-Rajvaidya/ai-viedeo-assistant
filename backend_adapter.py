@@ -102,9 +102,9 @@ process_input = _safe_import(
 # -----------------------------------------------------------------------------
 
 whisper_transcribe = _safe_import(
-    "core.transcriber.transcribe",
+    "transcriber.transcribe",
     lambda: __import__(
-        "core.transcriber",
+        "transcriber",
         fromlist=["transcribe"]
     ).transcribe,
 )
