@@ -6,23 +6,34 @@ AI Meeting Intelligence Assistant
 
 Streamlit presentation / orchestration layer.
 
-Pipeline:
+Complete pipeline:
 
-YouTube / Audio / Video
-        ↓
-Audio Processing
-        ↓
-Whisper / Sarvam
-        ↓
-Transcript
-        ↓
-Mistral Analysis
-        ↓
-Qdrant Cloud RAG Index
-        ↓
-Chat with Meeting
-        ↓
-Groq
+    YouTube / Audio / Video
+            ↓
+    Audio Acquisition + Preprocessing
+            ↓
+    Whisper / Sarvam
+            ↓
+    Transcript
+            ↓
+    Mistral AI Analysis
+            ↓
+    JSON Report
+            ↓
+    HuggingFace Embeddings
+            ↓
+    Qdrant Cloud
+            ↓
+    RAG Retrieval
+            ↓
+    Groq LLM
+            ↓
+    Chat with Meeting
+
+Run:
+
+    python -m streamlit run app.py
+
 ===============================================================================
 """
 
@@ -38,15 +49,18 @@ from backend_adapter import (
     MeetingAnalysis,
     BackendNotWiredError,
 
+    # Existing backend
     acquire_and_preprocess_audio,
     transcribe,
     run_full_analysis,
     save_report,
 
+    # Health / diagnostics
     backend_health,
     missing_backend_report,
     safe_traceback,
 
+    # RAG
     index_transcript_for_rag,
     chat_with_meeting,
 )
@@ -63,6 +77,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
 
 SUPPORTED_FORMATS = [
     "mp3",
@@ -118,6 +136,7 @@ st.markdown(
             background: rgba(99,102,241,0.15);
             color: #6366f1;
             margin-right: 0.4rem;
+            margin-bottom: 0.3rem;
         }
 
         .muted {
@@ -143,6 +162,10 @@ def init_state() -> None:
 
     defaults = {
 
+        # ---------------------------------------------------------------------
+        # Existing application state
+        # ---------------------------------------------------------------------
+
         "analysis": None,
 
         "processing": False,
@@ -155,9 +178,9 @@ def init_state() -> None:
 
         "engine_used": None,
 
-        # -------------------------------------------------------------
+        # ---------------------------------------------------------------------
         # RAG state
-        # -------------------------------------------------------------
+        # ---------------------------------------------------------------------
 
         "meeting_id": None,
 
@@ -172,6 +195,7 @@ def init_state() -> None:
     for key, value in defaults.items():
 
         if key not in st.session_state:
+
             st.session_state[key] = value
 
 
@@ -194,6 +218,10 @@ with st.sidebar:
 
     st.divider()
 
+    # -------------------------------------------------------------------------
+    # Navigation
+    # -------------------------------------------------------------------------
+
     pages = [
         "Analyze",
         "Results",
@@ -201,18 +229,18 @@ with st.sidebar:
         "Chat with Meeting",
     ]
 
-    # Handle old session state value
-    # from the previous "Coming Soon" version.
-
+    # Handle old session state from previous version
     if (
         st.session_state.active_page
         == "Chat with Meeting (Coming Soon)"
     ):
+
         st.session_state.active_page = (
             "Chat with Meeting"
         )
 
     if st.session_state.active_page not in pages:
+
         st.session_state.active_page = "Analyze"
 
     st.session_state.active_page = st.radio(
@@ -236,6 +264,9 @@ with st.sidebar:
 
     health = backend_health()
 
+    # IMPORTANT:
+    # These keys MUST match backend_adapter.backend_health()
+
     status_labels = {
 
         "Audio Acquisition":
@@ -247,14 +278,15 @@ with st.sidebar:
         "Sarvam Translation":
             "Sarvam Translation",
 
-        "Mistral Analysis":
+        "Mistral AI":
             "Mistral AI",
 
-        "Qdrant RAG":
+        "Qdrant Cloud":
             "Qdrant Cloud",
 
-        "Groq RAG":
+        "Groq LLM":
             "Groq LLM",
+
     }
 
     for key, label in status_labels.items():
@@ -269,28 +301,34 @@ with st.sidebar:
         )
 
     # -------------------------------------------------------------------------
-    # RAG status
+    # RAG index status
     # -------------------------------------------------------------------------
+
+    st.markdown("")
 
     if st.session_state.rag_indexed:
 
         st.markdown(
-            "🟢 RAG Index Ready"
+            "🟢 **RAG Index Ready**"
         )
 
         st.caption(
             f"{st.session_state.rag_chunk_count} "
-            "transcript chunk(s) indexed"
+            "transcript chunk(s) indexed in Qdrant Cloud"
         )
 
     else:
 
         st.markdown(
-            "⚪ RAG Index — Not Ready"
+            "⚪ **RAG Index — Not Ready**"
+        )
+
+        st.caption(
+            "Analyze a meeting to create its semantic index."
         )
 
     # -------------------------------------------------------------------------
-    # Backend import problems
+    # Backend wiring issues
     # -------------------------------------------------------------------------
 
     if not all(health.values()):
@@ -301,7 +339,7 @@ with st.sidebar:
 
             st.code(
                 missing_backend_report()
-                or "Check your API keys and dependencies."
+                or "Check API keys and dependencies."
             )
 
     st.divider()
@@ -329,7 +367,7 @@ st.markdown(
 
 
 # =============================================================================
-# WELCOME
+# WELCOME STATE
 # =============================================================================
 
 def render_welcome_state() -> None:
@@ -359,26 +397,35 @@ def render_welcome_state() -> None:
 # =============================================================================
 
 def run_pipeline(source: str) -> None:
+
     """
-    Run the complete meeting pipeline.
+    Complete processing pipeline.
 
-    Existing pipeline:
+    Existing AI pipeline:
+
         Audio
-        ↓
-        Transcription
-        ↓
-        Mistral analysis
-        ↓
-        Save report
-
-    New RAG pipeline:
+          ↓
+        Whisper / Sarvam
+          ↓
         Transcript
-        ↓
+          ↓
+        Mistral
+          ↓
+        MeetingAnalysis
+          ↓
+        JSON report
+
+    RAG pipeline:
+
+        Transcript
+          ↓
         Chunking
-        ↓
+          ↓
         HuggingFace embeddings
-        ↓
+          ↓
         Qdrant Cloud
+          ↓
+        Ready for Groq chat
     """
 
     st.session_state.last_error = None
@@ -391,7 +438,7 @@ def run_pipeline(source: str) -> None:
         ) as status:
 
             # ================================================================
-            # STEP 1 — AUDIO
+            # STEP 1 — AUDIO ACQUISITION
             # ================================================================
 
             status.write(
@@ -416,6 +463,9 @@ def run_pipeline(source: str) -> None:
                 "🔄 Preprocessing audio "
                 "(mono · 16kHz · chunking)…"
             )
+
+            # Audio preprocessing is handled inside
+            # acquire_and_preprocess_audio()
 
             status.write(
                 "✅ Audio preprocessed"
@@ -446,17 +496,19 @@ def run_pipeline(source: str) -> None:
             ):
 
                 raise ValueError(
-                    "Transcription returned "
-                    "an empty transcript."
+                    "Transcription returned an empty transcript."
                 )
 
             # ================================================================
-            # STEP 4 — ANALYSIS
+            # STEP 4 — AI ANALYSIS
             # ================================================================
 
             status.write(
                 "🔄 Cleaning transcript…"
             )
+
+            # Your existing analyzer handles
+            # transcript processing/cleaning.
 
             status.write(
                 "✅ Transcript cleaned"
@@ -502,11 +554,13 @@ def run_pipeline(source: str) -> None:
                 "🔄 Creating semantic meeting index…"
             )
 
-            rag_result = (
-                index_transcript_for_rag(
-                    transcript=analysis.transcript
-                )
+            rag_result = index_transcript_for_rag(
+                transcript=analysis.transcript
             )
+
+            # ---------------------------------------------------------------
+            # Store RAG information
+            # ---------------------------------------------------------------
 
             st.session_state.meeting_id = (
                 rag_result["meeting_id"]
@@ -518,7 +572,9 @@ def run_pipeline(source: str) -> None:
                 rag_result["chunk_count"]
             )
 
-            # New meeting → clear old conversation
+            # ---------------------------------------------------------------
+            # New meeting = new conversation
+            # ---------------------------------------------------------------
 
             st.session_state.chat_messages = []
 
@@ -541,7 +597,9 @@ def run_pipeline(source: str) -> None:
                 expanded=False,
             )
 
-        # Store analysis after successful pipeline
+        # ---------------------------------------------------------------------
+        # Save final application state
+        # ---------------------------------------------------------------------
 
         st.session_state.analysis = analysis
 
@@ -562,7 +620,7 @@ def run_pipeline(source: str) -> None:
         st.session_state.last_error = str(e)
 
         st.error(
-            f"This feature isn't connected to your backend yet:\n\n"
+            "This feature isn't connected to the backend yet.\n\n"
             f"{e}"
         )
 
@@ -588,6 +646,7 @@ def run_pipeline(source: str) -> None:
             "unexpected_error"
         )
 
+        # Print full traceback only to terminal
         print(
             safe_traceback()
         )
@@ -622,9 +681,9 @@ def render_analyze_page() -> None:
 
     source: Optional[str] = None
 
-    # -------------------------------------------------------------------------
-    # YouTube
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # YOUTUBE
+    # =========================================================================
 
     with tab_yt:
 
@@ -637,19 +696,18 @@ def render_analyze_page() -> None:
         )
 
         if yt_url:
+
             source = yt_url.strip()
 
-    # -------------------------------------------------------------------------
-    # Local file
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # LOCAL FILE
+    # =========================================================================
 
     with tab_file:
 
         uploaded = st.file_uploader(
             "Upload audio or video file",
-
             type=SUPPORTED_FORMATS,
-
             key="file_uploader",
         )
 
@@ -663,9 +721,14 @@ def render_analyze_page() -> None:
                 exist_ok=True
             )
 
+            # Prevent path traversal from uploaded filename
+            safe_filename = Path(
+                uploaded.name
+            ).name
+
             temp_path = (
                 uploads_dir
-                / uploaded.name
+                / safe_filename
             )
 
             with open(
@@ -686,9 +749,9 @@ def render_analyze_page() -> None:
                 temp_path
             )
 
-    # -------------------------------------------------------------------------
-    # Analyze button
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # ANALYZE BUTTON
+    # =========================================================================
 
     col_a, col_b = st.columns(
         [1, 4]
@@ -713,12 +776,11 @@ def render_analyze_page() -> None:
 
         elif (
             source.startswith("http")
-            and "youtu" not in source
+            and "youtu" not in source.lower()
         ):
 
             st.warning(
-                "That doesn't look like "
-                "a valid YouTube URL."
+                "That doesn't look like a valid YouTube URL."
             )
 
         else:
@@ -738,14 +800,25 @@ def render_metrics(
 
     c1, c2, c3, c4 = st.columns(4)
 
+    # -------------------------------------------------------------------------
+    # Content Type
+    # -------------------------------------------------------------------------
+
     c1.metric(
         "Content Type",
         analysis.content_type,
     )
 
+    # -------------------------------------------------------------------------
+    # Confidence
+    # -------------------------------------------------------------------------
+
     confidence_display = (
+
         f"{analysis.confidence * 100:.0f}%"
+
         if analysis.confidence <= 1
+
         else f"{analysis.confidence:.0f}%"
     )
 
@@ -754,14 +827,26 @@ def render_metrics(
         confidence_display,
     )
 
+    # -------------------------------------------------------------------------
+    # Processing
+    # -------------------------------------------------------------------------
+
     c3.metric(
         "Processing Status",
         "Complete ✅",
     )
 
+    # -------------------------------------------------------------------------
+    # Transcript length
+    # -------------------------------------------------------------------------
+
+    word_count = len(
+        analysis.transcript.split()
+    )
+
     c4.metric(
         "Transcript Length",
-        f"{len(analysis.transcript.split()):,} words",
+        f"{word_count:,} words",
     )
 
 
@@ -784,9 +869,17 @@ def render_results_page() -> None:
 
         return
 
+    # -------------------------------------------------------------------------
+    # Metrics
+    # -------------------------------------------------------------------------
+
     render_metrics(
         analysis
     )
+
+    # -------------------------------------------------------------------------
+    # Title
+    # -------------------------------------------------------------------------
 
     st.markdown(
         f"### {analysis.title}"
@@ -906,10 +999,29 @@ def render_results_page() -> None:
 
                 [
                     {
-                        "Task": item["task"],
-                        "Owner": item["owner"],
-                        "Deadline": item["deadline"],
-                        "Priority": item["priority"],
+                        "Task":
+                            item.get(
+                                "task",
+                                ""
+                            ),
+
+                        "Owner":
+                            item.get(
+                                "owner",
+                                "Not specified"
+                            ),
+
+                        "Deadline":
+                            item.get(
+                                "deadline",
+                                "Not specified"
+                            ),
+
+                        "Priority":
+                            item.get(
+                                "priority",
+                                "Not specified"
+                            ),
                     }
 
                     for item in analysis.action_items
@@ -983,10 +1095,12 @@ def render_results_page() -> None:
         if analysis.key_topics:
 
             st.markdown(
+
                 " ".join(
                     f'<span class="pill">{topic}</span>'
                     for topic in analysis.key_topics
                 ),
+
                 unsafe_allow_html=True,
             )
 
@@ -1033,7 +1147,9 @@ def render_results_page() -> None:
 
                 data=analysis.transcript,
 
-                file_name="transcript.txt",
+                file_name=(
+                    "transcript.txt"
+                ),
 
                 mime="text/plain",
 
@@ -1091,35 +1207,82 @@ def render_transcript_page() -> None:
 
 
 # =============================================================================
+# RAG SOURCE RENDERER
+# =============================================================================
+
+def render_sources(
+    sources: list[dict],
+) -> None:
+
+    if not sources:
+
+        return
+
+    with st.expander(
+        f"📚 Sources ({len(sources)})"
+    ):
+
+        for source in sources:
+
+            chunk_id = source.get(
+                "chunk_id"
+            )
+
+            score = source.get(
+                "score"
+            )
+
+            text = source.get(
+                "text",
+                "",
+            )
+
+            st.markdown(
+                f"**Chunk {chunk_id}**"
+            )
+
+            if score is not None:
+
+                st.caption(
+                    f"Similarity score: {score:.4f}"
+                )
+
+            st.write(
+                text
+            )
+
+            st.divider()
+
+
+# =============================================================================
 # CHAT PAGE
 # =============================================================================
 
 def render_chat_page() -> None:
+
     """
-    Real RAG-based chat interface.
+    RAG chat flow:
 
-    Flow:
-
-    User question
-          ↓
-    HuggingFace query embedding
-          ↓
-    Qdrant Cloud retrieval
-          ↓
-    Top relevant chunks
-          ↓
-    Groq
-          ↓
-    Grounded answer
+        User question
+              ↓
+        HuggingFace query embedding
+              ↓
+        Qdrant Cloud retrieval
+              ↓
+        Top relevant chunks
+              ↓
+        Groq
+              ↓
+        Grounded answer
     """
 
     st.markdown(
         "#### 💬 Chat with Meeting"
     )
 
-    # -------------------------------------------------------------------------
-    # No meeting
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # NO MEETING
+    # =========================================================================
 
     if (
         st.session_state.analysis is None
@@ -1135,9 +1298,9 @@ def render_chat_page() -> None:
 
         return
 
-    # -------------------------------------------------------------------------
-    # Meeting information
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # MEETING INFORMATION
+    # =========================================================================
 
     analysis: MeetingAnalysis = (
         st.session_state.analysis
@@ -1153,94 +1316,87 @@ def render_chat_page() -> None:
         "semantic chunks indexed"
     )
 
+    # =========================================================================
+    # CLEAR CHAT
+    # =========================================================================
+
+    clear_col, info_col = st.columns(
+        [1, 4]
+    )
+
+    with clear_col:
+
+        if st.button(
+            "🗑️ Clear Chat",
+            use_container_width=True,
+        ):
+
+            st.session_state.chat_messages = []
+
+            st.rerun()
+
     st.divider()
 
-    # -------------------------------------------------------------------------
-    # Chat history
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # CHAT HISTORY
+    # =========================================================================
 
     for message in (
         st.session_state.chat_messages
     ):
 
-        role = message["role"]
+        role = message.get(
+            "role",
+            "assistant"
+        )
 
-        content = message["content"]
+        content = message.get(
+            "content",
+            ""
+        )
 
-        with st.chat_message(role):
+        with st.chat_message(
+            role
+        ):
 
             st.markdown(
                 content
             )
 
-            # -------------------------------------------------------------
+            # ---------------------------------------------------------------
             # Sources
-            # -------------------------------------------------------------
+            # ---------------------------------------------------------------
 
             if (
                 role == "assistant"
                 and message.get("sources")
             ):
 
-                sources = message[
-                    "sources"
-                ]
+                render_sources(
+                    message["sources"]
+                )
 
-                with st.expander(
-                    f"📚 Sources ({len(sources)})"
-                ):
-
-                    for source in sources:
-
-                        chunk_id = source.get(
-                            "chunk_id"
-                        )
-
-                        score = source.get(
-                            "score"
-                        )
-
-                        text = source.get(
-                            "text",
-                            "",
-                        )
-
-                        st.markdown(
-                            f"**Chunk {chunk_id}**"
-                        )
-
-                        if score is not None:
-
-                            st.caption(
-                                f"Similarity score: "
-                                f"{score:.4f}"
-                            )
-
-                        st.write(
-                            text
-                        )
-
-                        st.divider()
-
-    # -------------------------------------------------------------------------
-    # User question
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # USER QUESTION
+    # =========================================================================
 
     question = st.chat_input(
         "Ask anything about this meeting..."
     )
 
     if not question:
+
         return
 
     question = question.strip()
 
     if not question:
+
         return
 
-    # -------------------------------------------------------------------------
-    # Display user message immediately
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # DISPLAY USER QUESTION
+    # =========================================================================
 
     st.session_state.chat_messages.append(
         {
@@ -1257,9 +1413,9 @@ def render_chat_page() -> None:
             question
         )
 
-    # -------------------------------------------------------------------------
-    # Generate answer
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # GENERATE RAG ANSWER
+    # =========================================================================
 
     with st.chat_message(
         "assistant"
@@ -1292,63 +1448,43 @@ def render_chat_page() -> None:
                     []
                 )
 
+                # -----------------------------------------------------------
+                # Answer
+                # -----------------------------------------------------------
+
                 st.markdown(
                     answer
                 )
 
-                # ---------------------------------------------------------
+                # -----------------------------------------------------------
                 # Sources
-                # ---------------------------------------------------------
+                # -----------------------------------------------------------
 
-                if sources:
+                render_sources(
+                    sources
+                )
 
-                    with st.expander(
-                        f"📚 Sources ({len(sources)})"
-                    ):
-
-                        for source in sources:
-
-                            chunk_id = source.get(
-                                "chunk_id"
-                            )
-
-                            score = source.get(
-                                "score"
-                            )
-
-                            text = source.get(
-                                "text",
-                                "",
-                            )
-
-                            st.markdown(
-                                f"**Chunk {chunk_id}**"
-                            )
-
-                            if score is not None:
-
-                                st.caption(
-                                    f"Similarity score: "
-                                    f"{score:.4f}"
-                                )
-
-                            st.write(
-                                text
-                            )
-
-                            st.divider()
-
-                # ---------------------------------------------------------
+                # -----------------------------------------------------------
                 # Save assistant response
-                # ---------------------------------------------------------
+                # -----------------------------------------------------------
 
                 st.session_state.chat_messages.append(
+
                     {
-                        "role": "assistant",
-                        "content": answer,
-                        "sources": sources,
+                        "role":
+                            "assistant",
+
+                        "content":
+                            answer,
+
+                        "sources":
+                            sources,
                     }
                 )
+
+            # =================================================================
+            # BACKEND ERROR
+            # =================================================================
 
             except BackendNotWiredError as e:
 
@@ -1361,12 +1497,22 @@ def render_chat_page() -> None:
                 )
 
                 st.session_state.chat_messages.append(
+
                     {
-                        "role": "assistant",
-                        "content": error_message,
-                        "sources": [],
+                        "role":
+                            "assistant",
+
+                        "content":
+                            error_message,
+
+                        "sources":
+                            [],
                     }
                 )
+
+            # =================================================================
+            # VALUE ERROR
+            # =================================================================
 
             except ValueError as e:
 
@@ -1377,12 +1523,22 @@ def render_chat_page() -> None:
                 )
 
                 st.session_state.chat_messages.append(
+
                     {
-                        "role": "assistant",
-                        "content": error_message,
-                        "sources": [],
+                        "role":
+                            "assistant",
+
+                        "content":
+                            error_message,
+
+                        "sources":
+                            [],
                     }
                 )
+
+            # =================================================================
+            # UNEXPECTED ERROR
+            # =================================================================
 
             except Exception:
 
@@ -1400,10 +1556,16 @@ def render_chat_page() -> None:
                 )
 
                 st.session_state.chat_messages.append(
+
                     {
-                        "role": "assistant",
-                        "content": error_message,
-                        "sources": [],
+                        "role":
+                            "assistant",
+
+                        "content":
+                            error_message,
+
+                        "sources":
+                            [],
                     }
                 )
 
