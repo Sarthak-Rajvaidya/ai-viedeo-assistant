@@ -621,7 +621,7 @@ def transcribe(
     if whisper_transcribe is None:
 
         raise BackendNotWiredError(
-            "core.transcriber.transcribe"
+            "transcriber.transcribe"
         )
 
     text = whisper_transcribe(
