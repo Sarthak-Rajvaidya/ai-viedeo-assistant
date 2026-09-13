@@ -68,4 +68,4 @@ def get_embedding_dimension() -> int:
 
     model = get_embedding_model()
 
-    return model.get_sentence_embedding_dimension()
+    return model.get_embedding_dimension()
