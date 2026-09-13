@@ -72,3 +72,8 @@ htmlcov/
 # Misc
 *.sqlite3
 qdrant_storage/
+
+.env
+qdrant_storage/
+__pycache__/
+uploads/
