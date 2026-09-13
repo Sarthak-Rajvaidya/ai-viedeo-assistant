@@ -605,7 +605,7 @@ def transcribe(
         if sarvam_transcribe is None:
 
             raise BackendNotWiredError(
-                "core.sarvam_transcriber.transcribe"
+                "sarvam_transcriber.transcribe"
             )
 
         text = sarvam_transcribe(
