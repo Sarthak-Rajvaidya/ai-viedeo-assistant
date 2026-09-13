@@ -1,8 +1,14 @@
 import os
 
+from dotenv import load_dotenv
+
 from langchain_mistralai import ChatMistralAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+
+
+# Load .env from project root
+load_dotenv()
 
 
 def get_llm():
@@ -11,7 +17,8 @@ def get_llm():
 
     if not api_key:
         raise ValueError(
-            "MISTRAL_API_KEY is not set in .env"
+            "MISTRAL_API_KEY is not set. "
+            "Check your .env file."
         )
 
     return ChatMistralAI(
@@ -46,7 +53,7 @@ def generate_answer(
     retrieved_chunks: list[dict]
 ) -> str:
 
-    if not question.strip():
+    if not question or not question.strip():
         raise ValueError(
             "Question cannot be empty."
         )
