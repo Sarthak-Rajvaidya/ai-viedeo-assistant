@@ -3,24 +3,27 @@ backend_adapter.py
 ===============================================================================
 Integration layer between Streamlit frontend and the existing AI backend.
 
-This file connects:
+Architecture:
 
-    app.py
-        ↓
+    Streamlit app.py
+          |
+          v
     backend_adapter.py
-        ↓
-    audio_processor
-    Whisper
-    Sarvam
-    Mistral analysis
-    Qdrant RAG
-    Groq LLM
+          |
+          +--> Audio Acquisition
+          +--> Whisper
+          +--> Sarvam
+          +--> Mistral Analysis
+          +--> HuggingFace Embeddings
+          +--> Qdrant Cloud
+          +--> Groq LLM
 ===============================================================================
 """
 
 from __future__ import annotations
 
 import json
+import os
 import traceback
 
 from dataclasses import dataclass, field
@@ -28,22 +31,33 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# --------------------------------------------------------------------------- #
+from dotenv import load_dotenv
+
+
+# =============================================================================
+# ENVIRONMENT
+# =============================================================================
+
+load_dotenv()
+
+
+# =============================================================================
 # DIRECTORIES
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 REPORTS_DIR = Path("reports")
 REPORTS_DIR.mkdir(exist_ok=True)
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # CUSTOM ERROR
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 class BackendNotWiredError(Exception):
     """Raised when a required backend component is unavailable."""
 
     def __init__(self, what: str, detail: str = ""):
+
         message = f"Backend function not available: {what}"
 
         if detail:
@@ -52,201 +66,346 @@ class BackendNotWiredError(Exception):
         super().__init__(message)
 
 
-# --------------------------------------------------------------------------- #
-# SAFE IMPORT SYSTEM
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# IMPORT ERROR STORAGE
+# =============================================================================
 
 _IMPORT_ERRORS: dict[str, str] = {}
 
 
 def _safe_import(label: str, fn):
+
     try:
+
         return fn()
 
     except Exception as e:
+
         _IMPORT_ERRORS[label] = str(e)
+
         return None
 
 
-# --------------------------------------------------------------------------- #
-# 1. AUDIO PROCESSOR
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# AUDIO PROCESSOR
+# =============================================================================
 
 process_input = _safe_import(
     "utils.audio_processor.process_input",
+
     lambda: __import__(
         "utils.audio_processor",
         fromlist=["process_input"]
-    ).process_input,
+    ).process_input
 )
 
 
-# --------------------------------------------------------------------------- #
-# 2. WHISPER
-# --------------------------------------------------------------------------- #
-#
-# IMPORTANT:
-# Your real core/transcriber.py contains:
-#
-#   transcribe_chunk(chunk_path, translate=False)
-#   transcribe_all(chunks, translate=False)
-#
-# There is NO transcribe() function.
-#
-# Therefore we connect to transcribe_all().
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# WHISPER
+# =============================================================================
+
+"""
+Actual project function:
+
+core/transcriber.py
+
+    transcribe_chunk()
+    transcribe_all()
+
+There is no transcribe() function.
+"""
 
 whisper_transcribe_all = _safe_import(
     "core.transcriber.transcribe_all",
+
     lambda: __import__(
         "core.transcriber",
         fromlist=["transcribe_all"]
-    ).transcribe_all,
+    ).transcribe_all
 )
 
 
-# --------------------------------------------------------------------------- #
-# 3. SARVAM
-# --------------------------------------------------------------------------- #
-#
-# Your real core/sarvam_transcriber.py contains:
-#
-#   transcribe_sarvam_batch(audio_path)
-#
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# SARVAM
+# =============================================================================
+
+"""
+Actual project function:
+
+core/sarvam_transcriber.py
+
+    transcribe_sarvam_batch()
+"""
 
 sarvam_transcribe_batch = _safe_import(
     "core.sarvam_transcriber.transcribe_sarvam_batch",
+
     lambda: __import__(
         "core.sarvam_transcriber",
         fromlist=["transcribe_sarvam_batch"]
-    ).transcribe_sarvam_batch,
+    ).transcribe_sarvam_batch
 )
 
 
-# --------------------------------------------------------------------------- #
-# 4. ANALYZER
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# MISTRAL ANALYSIS
+# =============================================================================
 
 analyze_transcript = _safe_import(
     "core.analyzer.analyze_transcript",
+
     lambda: __import__(
         "core.analyzer",
         fromlist=["analyze_transcript"]
-    ).analyze_transcript,
+    ).analyze_transcript
 )
 
 
-# --------------------------------------------------------------------------- #
-# 5. OPTIONAL FALLBACK FUNCTIONS
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# OPTIONAL ANALYSIS FUNCTIONS
+# =============================================================================
 
 classify_content = _safe_import(
     "core.classifier.classify_content",
+
     lambda: __import__(
         "core.classifier",
         fromlist=["classify_content"]
-    ).classify_content,
+    ).classify_content
 )
+
 
 summarize_transcript = _safe_import(
     "core.summarize.summarize",
+
     lambda: __import__(
         "core.summarize",
         fromlist=["summarize"]
-    ).summarize,
+    ).summarize
 )
+
 
 extract_information = _safe_import(
     "core.extractor.extract_information",
+
     lambda: __import__(
         "core.extractor",
         fromlist=["extract_information"]
-    ).extract_information,
+    ).extract_information
 )
+
 
 generate_title = _safe_import(
     "core.analyzer.generate_title",
+
     lambda: __import__(
         "core.analyzer",
         fromlist=["generate_title"]
-    ).generate_title,
+    ).generate_title
 )
 
 
-# --------------------------------------------------------------------------- #
-# 6. RAG IMPORTS
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# RAG IMPORTS
+# =============================================================================
+
+"""
+IMPORTANT:
+
+Do NOT import the entire RAG pipeline just to check Qdrant health.
+
+We separately import:
+
+    index_meeting()
+    ask_meeting()
+
+This makes failures much easier to diagnose.
+"""
 
 index_meeting = _safe_import(
     "core.rag.pipeline.index_meeting",
+
     lambda: __import__(
         "core.rag.pipeline",
         fromlist=["index_meeting"]
-    ).index_meeting,
+    ).index_meeting
 )
+
 
 ask_meeting = _safe_import(
     "core.rag.pipeline.ask_meeting",
+
     lambda: __import__(
         "core.rag.pipeline",
         fromlist=["ask_meeting"]
-    ).ask_meeting,
+    ).ask_meeting
 )
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# RAG / QDRANT CONFIGURATION CHECK
+# =============================================================================
+
+def qdrant_configured() -> bool:
+
+    url = os.getenv("QDRANT_URL")
+
+    api_key = os.getenv("QDRANT_API_KEY")
+
+    collection = os.getenv(
+        "QDRANT_COLLECTION",
+        "meeting_transcripts"
+    )
+
+    return bool(
+        url
+        and url.strip()
+        and api_key
+        and api_key.strip()
+        and collection
+        and collection.strip()
+    )
+
+
+# =============================================================================
+# GROQ CONFIGURATION CHECK
+# =============================================================================
+
+def groq_configured() -> bool:
+
+    api_key = os.getenv("GROQ_API_KEY")
+
+    return bool(
+        api_key
+        and api_key.strip()
+    )
+
+
+# =============================================================================
 # BACKEND HEALTH
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def backend_health() -> dict[str, bool]:
+
     """
-    Returns the availability of every backend component.
+    Returns the health/availability status of backend components.
+
+    For external services:
+
+        Qdrant Cloud -> checks configuration + RAG wiring
+        Groq          -> checks API key + RAG generation wiring
     """
+
+    # -------------------------------------------------------------------------
+    # QDRANT
+    # -------------------------------------------------------------------------
+
+    qdrant_ok = (
+        qdrant_configured()
+        and index_meeting is not None
+        and ask_meeting is not None
+    )
+
+    # -------------------------------------------------------------------------
+    # GROQ
+    # -------------------------------------------------------------------------
+
+    groq_generator_imported = _safe_import(
+        "core.rag.generator.generate_answer",
+
+        lambda: __import__(
+            "core.rag.generator",
+            fromlist=["generate_answer"]
+        ).generate_answer
+    )
+
+    groq_ok = (
+        groq_configured()
+        and groq_generator_imported is not None
+    )
+
+    # -------------------------------------------------------------------------
+    # MISTRAL
+    # -------------------------------------------------------------------------
+
+    mistral_ok = (
+        analyze_transcript is not None
+        or all([
+            classify_content is not None,
+            summarize_transcript is not None,
+            extract_information is not None
+        ])
+    )
 
     return {
-        "Audio Acquisition": process_input is not None,
 
-        "Whisper Transcription": (
-            whisper_transcribe_all is not None
-        ),
+        "Audio Acquisition":
+            process_input is not None,
 
-        "Sarvam Translation": (
-            sarvam_transcribe_batch is not None
-        ),
+        "Whisper Transcription":
+            whisper_transcribe_all is not None,
 
-        "Mistral Analysis": (
-            analyze_transcript is not None
-            or all([
-                classify_content,
-                summarize_transcript,
-                extract_information
-            ])
-        ),
+        "Sarvam Translation":
+            sarvam_transcribe_batch is not None,
 
-        "Qdrant Cloud": (
-            index_meeting is not None
-            and ask_meeting is not None
-        ),
+        "Mistral AI":
+            mistral_ok,
 
-        "Groq LLM": True,
+        "Qdrant Cloud":
+            qdrant_ok,
+
+        "Groq LLM":
+            groq_ok,
     }
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# DETAILED HEALTH INFORMATION
+# =============================================================================
+
+def backend_diagnostics() -> dict[str, Any]:
+
+    health = backend_health()
+
+    return {
+        "health": health,
+
+        "qdrant_url_configured":
+            bool(os.getenv("QDRANT_URL")),
+
+        "qdrant_api_key_configured":
+            bool(os.getenv("QDRANT_API_KEY")),
+
+        "qdrant_collection":
+            os.getenv(
+                "QDRANT_COLLECTION",
+                "meeting_transcripts"
+            ),
+
+        "groq_api_key_configured":
+            bool(os.getenv("GROQ_API_KEY")),
+
+        "import_errors":
+            dict(_IMPORT_ERRORS),
+    }
+
+
+# =============================================================================
 # IMPORT ERROR REPORT
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def missing_backend_report() -> str:
 
     if not _IMPORT_ERRORS:
+
         return ""
 
     lines = [
-        "Some backend modules could not be imported:"
+        "Backend diagnostics:"
     ]
 
     for label, error in _IMPORT_ERRORS.items():
+
         lines.append(
             f"  • {label} -> {error}"
         )
@@ -254,9 +413,9 @@ def missing_backend_report() -> str:
     return "\n".join(lines)
 
 
-# --------------------------------------------------------------------------- #
-# MEETING ANALYSIS OBJECT
-# --------------------------------------------------------------------------- #
+# =============================================================================
+# MEETING ANALYSIS
+# =============================================================================
 
 @dataclass
 class MeetingAnalysis:
@@ -310,38 +469,57 @@ class MeetingAnalysis:
     def to_json_dict(self) -> dict[str, Any]:
 
         return {
-            "title": self.title,
 
-            "content_type": self.content_type,
+            "title":
+                self.title,
 
-            "confidence": self.confidence,
+            "content_type":
+                self.content_type,
 
-            "language": self.language,
+            "confidence":
+                self.confidence,
 
-            "created_at": self.created_at,
+            "language":
+                self.language,
+
+            "created_at":
+                self.created_at,
 
             "summary": {
-                "overview": self.overview,
-                "key_points": self.key_points,
-                "takeaways": self.takeaways,
-                "conclusions": self.conclusions,
+
+                "overview":
+                    self.overview,
+
+                "key_points":
+                    self.key_points,
+
+                "takeaways":
+                    self.takeaways,
+
+                "conclusions":
+                    self.conclusions,
             },
 
-            "action_items": self.action_items,
+            "action_items":
+                self.action_items,
 
-            "key_decisions": self.key_decisions,
+            "key_decisions":
+                self.key_decisions,
 
-            "open_questions": self.open_questions,
+            "open_questions":
+                self.open_questions,
 
-            "key_topics": self.key_topics,
+            "key_topics":
+                self.key_topics,
 
-            "transcript": self.transcript,
+            "transcript":
+                self.transcript,
         }
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # NORMALIZE ANALYSIS
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def _normalize_analysis_dict(
     raw: dict[str, Any],
@@ -403,9 +581,9 @@ def _normalize_analysis_dict(
         or ""
     )
 
-    # ----------------------------------------------------------------------- #
+    # -------------------------------------------------------------------------
     # ACTION ITEMS
-    # ----------------------------------------------------------------------- #
+    # -------------------------------------------------------------------------
 
     action_items_raw = (
         raw.get("action_items")
@@ -419,40 +597,53 @@ def _normalize_analysis_dict(
         if isinstance(item, dict):
 
             action_items.append({
-                "task": str(
-                    item.get("task")
-                    or item.get("action")
-                    or ""
-                ),
 
-                "owner": str(
-                    item.get("owner")
-                    or "Not specified"
-                ),
+                "task":
+                    str(
+                        item.get("task")
+                        or item.get("action")
+                        or ""
+                    ),
 
-                "deadline": str(
-                    item.get("deadline")
-                    or "Not specified"
-                ),
+                "owner":
+                    str(
+                        item.get("owner")
+                        or "Not specified"
+                    ),
 
-                "priority": str(
-                    item.get("priority")
-                    or "Not specified"
-                ),
+                "deadline":
+                    str(
+                        item.get("deadline")
+                        or "Not specified"
+                    ),
+
+                "priority":
+                    str(
+                        item.get("priority")
+                        or "Not specified"
+                    ),
             })
 
         else:
 
             action_items.append({
-                "task": str(item),
-                "owner": "Not specified",
-                "deadline": "Not specified",
-                "priority": "Not specified",
+
+                "task":
+                    str(item),
+
+                "owner":
+                    "Not specified",
+
+                "deadline":
+                    "Not specified",
+
+                "priority":
+                    "Not specified",
             })
 
-    # ----------------------------------------------------------------------- #
+    # -------------------------------------------------------------------------
     # OTHER FIELDS
-    # ----------------------------------------------------------------------- #
+    # -------------------------------------------------------------------------
 
     key_decisions = (
         raw.get("key_decisions")
@@ -480,9 +671,11 @@ def _normalize_analysis_dict(
             content_type
         ).title(),
 
-        confidence=float(
-            confidence
-        ) if confidence else 0.0,
+        confidence=(
+            float(confidence)
+            if confidence
+            else 0.0
+        ),
 
         transcript=transcript,
 
@@ -516,9 +709,9 @@ def _normalize_analysis_dict(
     )
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # AUDIO ACQUISITION
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def acquire_and_preprocess_audio(
     source: str
@@ -533,9 +726,9 @@ def acquire_and_preprocess_audio(
     return process_input(source)
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # TRANSCRIPTION
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def transcribe(
     audio_info: dict[str, Any],
@@ -543,6 +736,7 @@ def transcribe(
 ) -> tuple[str, str]:
 
     if not audio_info:
+
         raise ValueError(
             "Audio information is empty."
         )
@@ -551,14 +745,18 @@ def transcribe(
         audio_info.get("language", "")
     ).lower()
 
-    # ----------------------------------------------------------------------- #
-    # Decide whether Sarvam or Whisper should be used
-    # ----------------------------------------------------------------------- #
+    # -------------------------------------------------------------------------
+    # LANGUAGE DECISION
+    # -------------------------------------------------------------------------
 
     use_sarvam = (
+
         mode == "sarvam"
+
         or (
+
             mode == "auto"
+
             and detected_lang not in (
                 "",
                 "en",
@@ -567,9 +765,9 @@ def transcribe(
         )
     )
 
-    # ----------------------------------------------------------------------- #
+    # =========================================================================
     # SARVAM
-    # ----------------------------------------------------------------------- #
+    # =========================================================================
 
     if use_sarvam:
 
@@ -579,10 +777,12 @@ def transcribe(
                 "core.sarvam_transcriber.transcribe_sarvam_batch"
             )
 
-        # Your audio processor should provide the WAV path.
         wav_path = (
+
             audio_info.get("wav_path")
+
             or audio_info.get("audio_path")
+
             or audio_info.get("path")
         )
 
@@ -598,9 +798,9 @@ def transcribe(
 
         return text, "Sarvam Saaras v3"
 
-    # ----------------------------------------------------------------------- #
+    # =========================================================================
     # WHISPER
-    # ----------------------------------------------------------------------- #
+    # =========================================================================
 
     if whisper_transcribe_all is None:
 
@@ -615,12 +815,12 @@ def transcribe(
 
     if not chunks:
 
-        # Fallback: if no chunks are available,
-        # try using wav_path directly.
-
         wav_path = (
+
             audio_info.get("wav_path")
+
             or audio_info.get("audio_path")
+
             or audio_info.get("path")
         )
 
@@ -640,9 +840,9 @@ def transcribe(
     return text, "OpenAI Whisper"
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # FULL AI ANALYSIS
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def run_full_analysis(
     transcript: str
@@ -654,9 +854,9 @@ def run_full_analysis(
             "Transcript is empty."
         )
 
-    # ----------------------------------------------------------------------- #
-    # Preferred orchestrator
-    # ----------------------------------------------------------------------- #
+    # -------------------------------------------------------------------------
+    # PREFERRED ANALYZER
+    # -------------------------------------------------------------------------
 
     if analyze_transcript is not None:
 
@@ -673,9 +873,9 @@ def run_full_analysis(
             transcript
         )
 
-    # ----------------------------------------------------------------------- #
-    # Fallback
-    # ----------------------------------------------------------------------- #
+    # -------------------------------------------------------------------------
+    # FALLBACK
+    # -------------------------------------------------------------------------
 
     if not all([
         classify_content,
@@ -703,8 +903,11 @@ def run_full_analysis(
     )
 
     title = (
+
         generate_title(transcript)
+
         if generate_title
+
         else extraction.get(
             "title",
             "Untitled"
@@ -712,11 +915,15 @@ def run_full_analysis(
     )
 
     raw = {
-        "title": title,
 
-        "classification": classification,
+        "title":
+            title,
 
-        "summary": summary,
+        "classification":
+            classification,
+
+        "summary":
+            summary,
 
         **extraction,
     }
@@ -727,9 +934,9 @@ def run_full_analysis(
     )
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # RAG INDEXING
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def index_transcript_for_rag(
     transcript: str,
@@ -754,9 +961,9 @@ def index_transcript_for_rag(
     )
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # RAG CHAT
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def chat_with_meeting(
     question: str,
@@ -789,9 +996,9 @@ def chat_with_meeting(
     )
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # SAVE REPORT
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def save_report(
     analysis: MeetingAnalysis,
@@ -816,9 +1023,9 @@ def save_report(
     return path
 
 
-# --------------------------------------------------------------------------- #
+# =============================================================================
 # SAFE TRACEBACK
-# --------------------------------------------------------------------------- #
+# =============================================================================
 
 def safe_traceback() -> str:
 
